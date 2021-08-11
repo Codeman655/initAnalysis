@@ -100,15 +100,6 @@ class Firmware:
         self.arch=""
         self.scanForInitFiles(args.filesystem)
 
-    #def _scan_firmware(self, fw_path):
-        #self.signatures = binwalk.scan(fw_path, signature=True, quiet=True)
-
-    #def is_encrypted(self, path):
-        #pass
-
-    #def is_packed(self, path):
-        #pass
-
     def statFile(self, entry):
         """
         statFile
@@ -566,8 +557,8 @@ class Firmware:
         else:
             return "black"
 
-    def genNodeID(self, fileRecord, order, parent_path):
-        uid = parent_path + str(order)
+    def genNodeID(self, fileRecord, parent_path):
+        uid = parent_path
         path=fileRecord["path"]
         magic = fileRecord["magic"]
         if not "script" in magic: 
@@ -616,7 +607,7 @@ class Firmware:
 
                     # Add child node 
                     child_basename = os.path.basename(childRecord["path"])
-                    child_id = self.genNodeID(childRecord, child_order, process) #Produce unique name for leaf nodes common one for scripts/dirs/files
+                    child_id = self.genNodeID(childRecord, process) #Produce unique name for leaf nodes common one for scripts/dirs/files
                     edge_color = self.genEdgeColor(childRecord["path"], childRecord["magic"])
                     node_color = self.genNodeColor(childRecord["magic"])
                     node_label = self.genNodeLabel(child_basename, childRecord["magic"])
@@ -645,11 +636,8 @@ class Firmware:
         #Trim the tree 
         if args.trim:
             G.remove_nodes_from(list(nx.isolates(G)))
-
-        # Walk through and combine existing nodes
-        #for n in G.nodes:
-            #nx.contracted_nodes(G, u, v)
-
+    #END
+# END Firmware class
 
 # Utility Functions #############################################
 #################################################################
@@ -765,8 +753,6 @@ def main(args):
     # Build the graph
     logging.info("Building the graph...")
     F.buildGraph()
-
-    #printdict(F.systemv)
 
     if not args.dot == "":
         logging.info(f"Writing dot file {args.dot}...")
