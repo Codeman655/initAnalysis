@@ -1,5 +1,5 @@
 bashlex==0.15
-binwalk==2.2.1+74b2a6f
+binwalk==2.1.0
 decorator==4.4.2
 networkx==2.5.1
 pkg-resources==0.0.0
