@@ -36,24 +36,41 @@ blacklist = ['/proc', '/sys', '/dev']
 #################################################################
 #################################################################
 class FileRecord:
+    #defaults
+    path=""
+    basename=""
+    perms=""
+    processed=False
+    magic=""
+    parent=""
+    meta={}
+    children=[]
+
     def __init__(self, entry):
-        """
-        statFile
-        args: entry - the path to the file
-        
-        returns a dictionary of the following:
-        path - the full path from the given starting directory
-        basename - basename for the file
-        perm - octal permissions
-        processed - gone through the scandirs process at least once
-        magic - magic data for each file
-        """
-        m_data = magic.from_file(entry.path)
-        self.path = entry.path
-        self.basename = os.path.basename(entry.name)
-        self.perms = oct(os.stat(entry.path).st_mode)[-3:]
-        self.processed = False
-        self.magic = m_data
+        if isinstance(entry, dict):
+            self.path = entry["path"]
+            self.basename = entry["basename"]
+            self.perms = entry["perms"]
+            self.processed = entry["processed"]
+            self.magic = entry["magic"]
+            self.parent = entry["parent"]
+            self.meta = entry["meta"]
+            self.children = entry["children"]
+
+        elif isinstance(entry, os.DirEntry):
+            self.path = entry.path
+            self.basename = os.path.basename(entry.name)
+            self.perms = oct(os.stat(entry.path).st_mode)[-3:]
+            self.processed = False
+            self.magic = magic.from_file(entry.path)
+            self.parent = ""
+            self.meta = {}
+            self.children=[]
+        else:
+            #I should throw an error
+            logging.info("FileRecord init with bad info: None Returned")
+            return None
+
 
 # InitAnalysis Class ############################################
 #################################################################
@@ -90,12 +107,7 @@ class InitAnalysis:
         processed - gone through the scandirs process at least once
         magic - magic data for each file
         """
-        m_data = magic.from_file(entry.path)
-        return {"path": entry.path,
-                    "basename":os.path.basename(entry.name),
-                    "perms":oct(os.stat(entry.path).st_mode)[-3:],
-                    "processed":False,
-                    "magic":m_data}
+        return FileRecord(entry)
 
     def statDir(self, basepath):
         """
@@ -107,58 +119,47 @@ class InitAnalysis:
                 for entry in entries:
                     entry_path = os.path.join(basepath, entry.name)
                     if entry.is_file():
-                        m_data = magic.from_file(entry_path)
-                        #TODO These should be a class
-                        #logging.debug(f"Adding {entry_path} to init collection")
-                        self.files[entry.path] = {"path": entry.path,
-                                "basename":os.path.basename(entry.name),
-                                "perms":oct(entry.stat().st_mode)[-3:], 
-                                "processed":False,
-                                "magic":m_data}
+                        # Add to the global files record
+                        logging.debug(f"Adding {entry_path} to init collection")
+                        self.files[entry.path] = FileRecord(entry)
+
                         #catch the big fields related to init 
                         if entry.path.endswith("/rc") or entry.path.endswith("/rc.sysinit"):
-                            ret[entry.path] = {"path": entry.path,
-                                "parent":"init", # this is pre-emptive. I haven't found init yet
-                                "basename":os.path.basename(entry.name),
-                                "perms":oct(entry.stat().st_mode)[-3:],
-                                "processed":False,
-                                "magic":m_data}
+                            # this is pre-emptive. I haven't found init yet
+                            fr = FileRecord(entry)
+                            fr.parent = "init"
+                            ret[entry.path] = fr
+
                         elif "/rc." in entry.path:
-                            ret[entry.path] = {"path": entry.path,
-                                "parent":"rc.sysinit", # this is pre-emptive. Belongs to rc or rc.sysinit
-                                "basename":os.path.basename(entry.name),
-                                "perms":oct(entry.stat().st_mode)[-3:],
-                                "processed":False,
-                                "magic":m_data}
+                            # this is pre-emptive. Belongs to rc or rc.sysinit
+                            fr = FileRecord(entry)
+                            fr.parent="rc.sysinit"
+                            ret[entry.path] = fr
                         else:
-                            ret[entry.path] = {"path": entry.path,
-                                "parent":"init", # this is pre-emptive. I haven't found init yet
-                                "basename":os.path.basename(entry.name),
-                                "perms":oct(entry.stat().st_mode)[-3:],
-                                "processed":False,
-                                "magic":m_data}
+                            # just a file in an rc or whitelisted directory
+                            ret[entry.path] = FileRecord(entry)
         except OSError:
             pass
         return ret
 
-    def ELFDependencyWriter(self, v):
+    def ELFDependencyWriter(self, fr):
         """
         Writes the symbol table and dynamic section to a unique file
         Arguments: StatFile Entry {path, basename, prems, magic}
         """
-        if "dynamically linked" in v["magic"]:
-            logging.info(f"ELF file found is dynamically linked: {v['path']}")
+        if "dynamically linked" in fr.magic:
+            logging.info(f"ELF file found is dynamically linked: {fr.path}")
             libs= {}
-            symfile = os.path.join(self.args.logdir,v["basename"] + "_symbols.log")
+            symfile = os.path.join(self.args.logdir, fr.basename + "_symbols.log")
             with open(symfile, 'w') as symoutfile:
                 logging.info(f"Writing syminfo to {symfile}")
-                subprocess.call("readelf -s " + v["path"],\
+                subprocess.call("readelf -s " + fr.path,\
                         shell=True,\
                         stdout=symoutfile)
-            libfile = os.path.join(self.args.logdir,v["basename"] + "_libs.log")
+            libfile = os.path.join(self.args.logdir, fr.basename + "_libs.log")
             with open(symfile, 'w') as liboutfile:
                 logging.info(f"Writing needed libraries to {libfile}")
-                stdout = subprocess.call("readelf -d " + v["path"],\
+                stdout = subprocess.call("readelf -d " + fr.path ,\
                         shell=True,\
                         stdout=liboutfile)
 
@@ -243,14 +244,15 @@ class InitAnalysis:
         #TODO set a hierarchy in recursive searches. each found path needs a parent
 
         # Incoming from startupCollection, out as new map
-        path = initFile["path"]
-        magicData = initFile["magic"]
+        path = initFile.path
+        magicData = initFile.magic
         pathRegex = re.compile(r"((?:/[\w-]+)*(?:/[\w\.-]+))\s")
         commentRegex = re.compile(r"[\s*]*#")
         keywordRegex = re.compile(r"\s*(\w+)")
         mountsInFile = []
+
         # Short circuit self-references 
-        if path in initNodes or initFile["processed"] == True:
+        if path in initNodes or initFile.processed == True:
             # Decoreate with ELF data?
             logging.debug(f"already scanned {path}...")
             return
@@ -258,7 +260,7 @@ class InitAnalysis:
         # Because this is recursive, we don't know if the file is a script
         if "script" in magicData or "ASCII text" in magicData:
             logging.debug(f"Searching {path} script for other binaries")
-            initFile["children"] = []
+            initFile.children = []
             with open(path, 'r') as fp:
                 order=0
                 # For each line in the open file
@@ -287,19 +289,19 @@ class InitAnalysis:
                             logging.info(f"binary '{binInQuestion}' referenced but not in filesystem")
                             #we still must scan this line for a path
                         else:
-                            fileRecordPath = fileRecordEntry["path"]
+                            fileRecordPath = fileRecordEntry.path
                             # The binary in question must match a path/to(/binary)
                             logging.debug(f" {order}-th call to binary: {binInQuestion}")
                             # append to original init file in startupColleciton
                             # The order in which they are appended is the order in which they were discovered
-                            initFile["children"].append(copy.deepcopy(fileRecordEntry))
+                            initFile.children.append(copy.deepcopy(fileRecordEntry))
 
                             # Prepare child for recursive search
                             if fileRecordPath not in initNodes:
                                 logging.debug(f"Deep Copy {fileRecordPath} into initnodes")
                                 initNodes[fileRecordPath] = copy.deepcopy(fileRecordEntry) #Copy! Do not reference
                                 self.parseInitElf(initNodes[fileRecordPath])
-                                initNodes[fileRecordPath]["processed"] = True
+                                initNodes[fileRecordPath].processed = True
                             else:
                                 logging.debug(f"{fileRecordPath} already in initnodes")
                             order += 1 
@@ -314,20 +316,24 @@ class InitAnalysis:
                             self.missing[foundPath] = {"file":foundPath,"calledby":path}
                             logging.info(f"path '{foundPath}' referenced but not in filesystem. Marked as missing child.")
                             # Generate a missing file record for this strange file
-                            missingFileRecord = { "path": foundPath,
+                            missingFileRecord = FileRecord( {"path":foundPath, 
                                     "basename":os.path.basename(foundPath),
                                     "perms":'000',
-                                    "processed":True, #No need to search for this
-                                    "magic":"missing"}
-                            initFile["children"].append(missingFileRecord)
+                                    "processed":True,
+                                    "magic":"missing",
+                                    "meta":{},
+                                    "parent":[],
+                                    "children":[]
+                                    })
+                            initFile.children.append(missingFileRecord)
                         else:
                             # The foundRecord path must match the given path we have.
-                            fileRecordPath = fileRecordEntry["path"] # this is redundant. 
+                            fileRecordPath = fileRecordEntry.path # this is redundant. 
                             if fileRecordPath.endswith(foundPath): # This is not OS agnostic
                                 #If they match, append to the list of children
                                 logging.debug(f" {order}-th call to file: {foundPath}")
                                 # append to original init file in startupColleciton
-                                initFile["children"].append(copy.deepcopy(fileRecordEntry))
+                                initFile.children.append(copy.deepcopy(fileRecordEntry))
 
                                 # Prepare child for recursive search
                                 if fileRecordPath not in initNodes:
@@ -341,7 +347,7 @@ class InitAnalysis:
                                     self.parseInitElf(initNodes[fileRecordPath])
                                     #if script, will traverse
                                     self.scriptSearch(initNodes[fileRecordPath], initNodes)
-                                    initNodes[fileRecordPath]["processed"] = True
+                                    initNodes[fileRecordPath].processed = True
                                 order += 1
         if mountsInFile:
             self.mountpoints[path] = mountsInFile
@@ -378,9 +384,8 @@ class InitAnalysis:
         Uses regexes to decorate the init collections
         Args: fileRecord - the systemv record of the file in question
         """
-        init_file = fileRecord["path"]
-        fileRecord["children"] = []
-        fileRecord["parent"] = "init" # Hard Coded because I am *DUMB*
+        init_file = fileRecord.path
+        fileRecord.parent = "init"
         with open(init_file, "r") as fp:
             order=0
             for line in fp:
@@ -394,7 +399,7 @@ class InitAnalysis:
                             #If they match, append to the list of children of inittab
                             childFileRecord = self.getFileRecord(match)
                             assert(childFileRecord), f"child record not found for file {match}"
-                            fileRecord["children"].append(childFileRecord)
+                            fileRecord.children.append(childFileRecord)
                             logging.info(f" {order}-th call to binary: {match}")
                             order += 1
                             found = True
@@ -416,31 +421,30 @@ class InitAnalysis:
         #TODO: If I were to do this again, I'd have a list of filenames or 
         #      regexes and callback functions to process each file
         initnodes = {}
-        for k,v in d.items(): # Immediately iterate to subitems
+        for path, fr in d.items(): # Extract the file and fileRecord Object
             #If it's already been processed, skip
-            if v["processed"] == True:
+            if fr.processed == True:
                 continue
 
             # TODO Refactor the inittab work into a function
-            if v["path"].endswith("inittab"):
-                self.parseInitTab(v)
+            if fr.path.endswith("inittab"):
+                self.parseInitTab(fr)
 
-            elif "ELF" in v["magic"]:
-                self.parseInitElf(v)
+            elif "ELF" in fr.magic:
+                self.parseInitElf(fr)
 
-            elif "symbolic link" in v["magic"]:
+            elif "symbolic link" in fr.magic:
                 # Consider replacing or relabeling the symbolic link 
                 # Consider not setting parents, its relabeled when the graph is produced
-                match = re.search(r"symbolic link to (.*)$", v["magic"])
+                match = re.search(r"symbolic link to (.*)$", fr.magic)
                 linked_file = match.group(1)
                 linked_basename  = os.path.basename(linked_file)
-                #v['parent'] = { "path":linked_basename, "basename": linked_basename, "magic": v["magic"] }
-                logging.debug(f"Setting symbolic link (link -> realpath): {linked_basename} => {v['path']}")
+                logging.debug(f"Setting symbolic link (link -> realpath): {linked_basename} => {fr.path}")
             # If we don't know, pass to script searcher
             else: 
                 # Recurse and add your children to the filesystem init graph
-                self.scriptSearch(v,initnodes)
-            v["processed"] = True
+                self.scriptSearch(fr,initnodes)
+            fr.processed = True
 
         # Discovered files should be processed into init
         # Rerun this function if there are unprocessed files
@@ -462,19 +466,19 @@ class InitAnalysis:
             return self.files[basepath]
         except KeyError: 
             # If the basepath is a substring of the full path
-            for key,value in self.files.items():
+            for path,fileRecord in self.files.items():
                 #print(f"does {key} == /{basepath}?")
-                if key.endswith("/" + basepath):
+                if path.endswith("/" + basepath):
                 #    print(f"returning record for {basepath}")
-                    return value #short ciruit
+                    return fileRecord #short ciruit
         # if neither is true
         logging.debug(f"getFileRecord: couldn't find {basepath}")
         return None
 
     def allProcessed(self, initnodes):
         flag = True
-        for k,v in initnodes.items():
-            if v["processed"] == False:
+        for path,fr in initnodes.items():
+            if fr.processed == False:
                 flag = False
                 break
         return flag

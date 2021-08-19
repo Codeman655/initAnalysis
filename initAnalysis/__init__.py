@@ -24,7 +24,7 @@ import re
 import magic
 import networkx as nx
 
-from InitAnalysis import InitAnalysis
+from InitAnalysis import * #InitAnalysis and FileRecord classes
 
 # Global params
 parser = argparse.ArgumentParser(description="post binwalk firmware analysis")
@@ -53,7 +53,7 @@ elif args.verbose:
 else:
     logging.basicConfig(level=logging.INFO)
 
-# Utility Functions #############################################
+# Graphing Functions ############################################
 #################################################################
 #################################################################
 #################################################################
@@ -101,11 +101,11 @@ def genNodeColor( magic):
         return "black"
 
 def genNodeID(fileRecord, parent_path):
-    uid = parent_path
-    path=fileRecord["path"]
-    magic = fileRecord["magic"]
+    uid = hash(parent_path)
+    path = fileRecord.path
+    magic = fileRecord.magic
     if not "script" in magic: 
-        return f"{hash(uid)}:{fileRecord['path']}"
+        return f"{uid}:{path}"
     return path
 
 def buildGraph(G, IA, args):
@@ -119,14 +119,14 @@ def buildGraph(G, IA, args):
     # for each process in the startup list
     init_index=0
     observed = set()
-    for process, attrs in IA.systemv.items():
+    for process, fileRecord in IA.systemv.items():
         # Hacky checklist to avoid repeats
         if process in observed: 
             continue
         else:
             observed.add(process)
-        process_basename = attrs["basename"]
-        process_magic = attrs["magic"]
+        process_basename = fileRecord.basename 
+        process_magic = fileRecord.magic 
         node_label = genNodeLabel(process_basename, process_magic)
         magic_shorthand = genMagicShorthand(process_magic)
         node_color = genNodeColor(process_magic)
@@ -136,27 +136,28 @@ def buildGraph(G, IA, args):
         init_index +=1 
 
         #adding children
-        if "children" not in attrs:
+        if not fileRecord.children: 
             logging.debug("no children")
         else:
-            for index in range(len(attrs["children"])):
+            for index in range(len(fileRecord.children)):
                 """
                 fileRecord = type(childRecord)
                 """
-                childRecord = attrs["children"][index]
+                childRecord = fileRecord.children[index]
                 child_order = index
-                child_path  = childRecord["path"]
+                child_path  = childRecord.path 
                 observed.add(child_path)
 
-                logging.debug(f" {process_basename} has child process {childRecord['path']}")
+                logging.debug(f" {process_basename} has child process {child_path}")
 
                 # Add child node 
-                child_basename = os.path.basename(childRecord["path"])
-                child_id = genNodeID(childRecord, process) #Produce unique name for leaf nodes common one for scripts/dirs/files
-                edge_color = genEdgeColor(childRecord["path"], IA)
-                node_color = genNodeColor(childRecord["magic"])
-                node_label = genNodeLabel(child_basename, childRecord["magic"])
-                magic_shorthand = genMagicShorthand(childRecord["magic"])
+                #Produce unique name for leaf nodes common one for scripts/dirs/files
+                child_basename = os.path.basename(child_path)
+                child_id = genNodeID(childRecord, process) 
+                edge_color = genEdgeColor(childRecord.path , IA)
+                node_color = genNodeColor(childRecord.magic )
+                node_label = genNodeLabel(child_basename, childRecord.magic )
+                magic_shorthand = genMagicShorthand(childRecord.magic )
                 edge_label = str(index)
 
                 #Skip IA-referencing 
@@ -165,19 +166,19 @@ def buildGraph(G, IA, args):
                 G.add_node(child_id, label=node_label, order=index, color=node_color, node_path=child_path, type=magic_shorthand)
                 G.add_edge(process, child_id, color=edge_color, label=edge_label)
 
-        if "parent" in attrs:
+        if fileRecord.parent:
             #TODO: Why is the only parent: init?
-            assert(attrs["parent"] != ""), "parent of {process_basename} is still empty"
-            logging.debug(f" {process_basename} has parent process {attrs['parent']}")
-            parentRecord = IA.getFileRecord(attrs["parent"])
+            logging.debug(f" {process_basename} has parent process {fileRecord.parent}")
+            parentRecord = IA.getFileRecord(fileRecord.parent )
+
             # if this is null, we haven't found the parent in the filesystem
-            assert(parentRecord != None), f"{attrs['parent']} is NULL and not in the filesystem"
-            node_color = genNodeColor(parentRecord["magic"])
-            magic_shorthand = genMagicShorthand(parentRecord["magic"])
+            assert(parentRecord != None), f"{fileRecord.parent} is NULL and not in the filesystem"
+            node_color = genNodeColor(parentRecord.magic )
+            magic_shorthand = genMagicShorthand(parentRecord.magic )
             edge_color = genEdgeColor(process_basename, IA)
 
             # init is an assumed binary
-            G.add_edge(parentRecord["path"], attrs["path"], color=edge_color)
+            G.add_edge(parentRecord.path , fileRecord.path , color=edge_color)
     #Trim the tree 
     if args.trim:
         G.remove_nodes_from(list(nx.isolates(G)))
