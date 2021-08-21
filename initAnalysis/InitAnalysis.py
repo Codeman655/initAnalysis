@@ -27,7 +27,8 @@ reserved_keywords=["case",
  "with",
  "class",
  "except"] 
-init_whitelist_dirs = [ "init.d", "rcS.d", "rc.local" ]
+#init_whitelist_dirs = [ "init.d", "rcS.d", "rc.local" ]
+init_whitelist_dirs = []
 blacklist = ['/proc', '/sys', '/dev'] 
 
 
@@ -62,7 +63,7 @@ class FileRecord:
             self.basename = os.path.basename(entry.name)
             self.perms = oct(os.stat(entry.path).st_mode)[-3:]
             self.processed = False
-            self.magic = magic.from_file(entry.path)
+            self.magic = "directory" if entry.is_dir() else magic.from_file(entry.path)
             self.parent = ""
             self.meta = {}
             self.children=[]
@@ -109,35 +110,52 @@ class InitAnalysis:
         """
         return FileRecord(entry)
 
-    def statDir(self, basepath):
+    def statDir(self, basepath, parent=""):
         """
         For some reason, only called for init collections
+        args:
+            basepath = path of the directory
+            parent argument = If I find a dir path while scanning a script
+            or binary, be sure to make it as the parent
         """
         ret = {}
         try:
             with os.scandir(basepath) as entries:
                 for entry in entries:
                     entry_path = os.path.join(basepath, entry.name)
-                    if entry.is_file():
+                    # Add to the global files record
+                    logging.debug(f"Adding {entry_path} to init collection")
+                    self.files[entry.path] = FileRecord(entry)
+                    fr = FileRecord(entry)
+                    fr.parent = parent
+                    ret[entry.path] = FileRecord(entry)
+                    #if entry.is_file():
                         # Add to the global files record
-                        logging.debug(f"Adding {entry_path} to init collection")
-                        self.files[entry.path] = FileRecord(entry)
+                        #logging.debug(f"Adding {entry_path} to init collection")
+                        #self.files[entry.path] = FileRecord(entry)
 
                         #catch the big fields related to init 
-                        if entry.path.endswith("/rc") or entry.path.endswith("/rc.sysinit"):
+                        #if entry.path.endswith("/inittab") or entry.path.endswith("/rc.sysinit"):
+                        #    fr = FileRecord(entry)
+                        #    fr.parent = "init"
+                        #    ret[entry.path] = fr
+                        #if entry.path.endswith("/rc") or entry.path.endswith("/rc.sysinit"):
                             # this is pre-emptive. I haven't found init yet
-                            fr = FileRecord(entry)
-                            fr.parent = "init"
-                            ret[entry.path] = fr
+                            #fr = FileRecord(entry)
+                            #fr.parent = "init"
+                            #ret[entry.path] = fr
 
-                        elif "/rc." in entry.path:
+                        #elif "/rc." in entry.path:
                             # this is pre-emptive. Belongs to rc or rc.sysinit
-                            fr = FileRecord(entry)
-                            fr.parent="rc.sysinit"
-                            ret[entry.path] = fr
-                        else:
+                            #fr = FileRecord(entry) #Does this return a new copy?
+                            #fr.parent="rc.sysinit"
+                            #ret[entry.path] = fr
+                        #else:
                             # just a file in an rc or whitelisted directory
-                            ret[entry.path] = FileRecord(entry)
+                        #fr = FileRecord(entry)
+                        #fr.parent = parent
+                        #ret[entry.path] = FileRecord(entry)
+
         except OSError:
             pass
         return ret
@@ -211,19 +229,24 @@ class InitAnalysis:
                     if entry.is_file():
                         self.files[entry_path] = self.statFile(entry) #add file path to global list
                         if re.search(r"init",entry.name) or re.match(r"rc.*", entry.name):
+                            # Hack to grab init binary and inittab
+                            # Going to get some noise
                             logging.debug(f"init-related file: \"{entry_path}\"")
                             self.systemv[entry_path] = self.statFile(entry)
                     #Not a file
                     elif entry.is_dir() and not entry.is_symlink():
+                        #add directories too
+                        self.files[entry_path] = self.statFile(entry) #add file path to global list
+
                         logging.debug(f"checking out directory: {entry_path}")
                         if entry.name in init_whitelist_dirs or re.match("rc.*",entry.name):
                             # Record binaries related to systemv init
                             logging.debug(f"init dir found: {entry_path}!")
                             self.systemv.update(self.statDir(entry_path))
-                        elif entry.name == "systemd":
+                        #elif entry.name == "systemd":
                             # Record binares related to systemd
-                            logging.debug(f"systemd found: {entry_path}!")
-                            self.systemd.update(self.statDir(entry_path))
+                            #logging.debug(f"systemd found: {entry_path}!")
+                            #self.systemd.update(self.statDir(entry_path))
                         else:
                             # Recurse into this directory
                             self.scanForInitFiles(entry_path)
@@ -313,6 +336,8 @@ class InitAnalysis:
                         found = False
                         fileRecordEntry = self.getFileRecord(foundPath)
                         if fileRecordEntry == None:
+
+                            # Otherwise the file is missing
                             self.missing[foundPath] = {"file":foundPath,"calledby":path}
                             logging.info(f"path '{foundPath}' referenced but not in filesystem. Marked as missing child.")
                             # Generate a missing file record for this strange file
@@ -328,7 +353,7 @@ class InitAnalysis:
                             initFile.children.append(missingFileRecord)
                         else:
                             # The foundRecord path must match the given path we have.
-                            fileRecordPath = fileRecordEntry.path # this is redundant. 
+                            fileRecordPath = fileRecordEntry.path # this is redundant but avoids the obvious
                             if fileRecordPath.endswith(foundPath): # This is not OS agnostic
                                 #If they match, append to the list of children
                                 logging.debug(f" {order}-th call to file: {foundPath}")
@@ -343,6 +368,15 @@ class InitAnalysis:
 
                                     #elf or script 
                                     # Set processed (as scriptSearch was run on this file)
+                                    # Is it a directory? 
+                                    if "directory" in fileRecordEntry.magic:
+                                        # stat the new directory and add 
+                                        # to the list of files needing to be processed
+                                        # Mark myself as the parent
+                                        logging.debug(f"DIR {fileRecordPath} FOUND: Adding files to initlist")
+                                        newFiles = self.statDir(fileRecordEntry.path, parent=path)
+                                        initNodes.update(newFiles)
+
                                     #if elf, will print libraries in log
                                     self.parseInitElf(initNodes[fileRecordPath])
                                     #if script, will traverse
@@ -423,6 +457,7 @@ class InitAnalysis:
         initnodes = {}
         for path, fr in d.items(): # Extract the file and fileRecord Object
             #If it's already been processed, skip
+            logging.debug(f"Processing[{fr.processed}]: {path}")
             if fr.processed == True:
                 continue
 
@@ -444,6 +479,7 @@ class InitAnalysis:
             else: 
                 # Recurse and add your children to the filesystem init graph
                 self.scriptSearch(fr,initnodes)
+
             fr.processed = True
 
         # Discovered files should be processed into init

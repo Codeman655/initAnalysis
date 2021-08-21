@@ -77,6 +77,8 @@ def genMagicShorthand( magic):
         return "script"
     elif "missing" in magic:
         return "missing"
+    elif "directory" in magic:
+        return "directory"
     else:
         return "file"
 
@@ -97,14 +99,14 @@ def genNodeColor( magic):
         return "pink"
     elif "script" in magic:
         return "blue"
-    else:
+    else: #files and directories
         return "black"
 
 def genNodeID(fileRecord, parent_path):
     uid = hash(parent_path)
     path = fileRecord.path
     magic = fileRecord.magic
-    if not "script" in magic: 
+    if not "script" or "directory" in magic: 
         return f"{uid}:{path}"
     return path
 
@@ -293,6 +295,8 @@ def main(args):
     logging.info("Reading the filesystem...")
     IA = InitAnalysis(args)
 
+    printdict(IA.systemv)
+
     # Processing the collection of init-related files
     logging.info("Processing/Searching for init files...")
     IA.processInitCollection(IA.systemv)
@@ -309,9 +313,9 @@ def main(args):
         logging.info(f"Writing graphml file {args.graphml}...")
         nx.write_graphml(G, args.graphml)
     if not args.quiet:
-        write_file_csv(IA, os.path.join(args.logdir, "filesystem.csv"))
-        write_missingfiles_csv(IA, os.path.join(args.logdir, "missingfiles.csv"))
-        print()
+        #write_file_csv(IA, os.path.join(args.logdir, "filesystem.csv"))
+        #write_missingfiles_csv(IA, os.path.join(args.logdir, "missingfiles.csv"))
+        print("fileRecords don't support new objects")
 
 if __name__ == "__main__":
     main(args)
