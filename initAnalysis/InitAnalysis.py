@@ -317,12 +317,13 @@ class InitAnalysis:
                             logging.debug(f" {order}-th call to binary: {binInQuestion}")
                             # append to original init file in startupColleciton
                             # The order in which they are appended is the order in which they were discovered
-                            initFile.children.append(copy.deepcopy(fileRecordEntry))
+                            #initFile.children.append(copy.deepcopy(fileRecordEntry))
+                            initFile.children.append(fileRecordEntry)
 
                             # Prepare child for recursive search
                             if fileRecordPath not in initNodes:
                                 logging.debug(f"Deep Copy {fileRecordPath} into initnodes")
-                                initNodes[fileRecordPath] = copy.deepcopy(fileRecordEntry) #Copy! Do not reference
+                                initNodes[fileRecordPath] = fileRecordEntry #Copy! Do not reference
                                 self.parseInitElf(initNodes[fileRecordPath])
                                 initNodes[fileRecordPath].processed = True
                             else:
@@ -356,15 +357,15 @@ class InitAnalysis:
                             fileRecordPath = fileRecordEntry.path # this is redundant but avoids the obvious
                             if fileRecordPath.endswith(foundPath): # This is not OS agnostic
                                 #If they match, append to the list of children
-                                logging.debug(f" {order}-th call to file: {foundPath}")
+                                logging.debug(f" {order}-th call to file: {foundPath} type:{fileRecordEntry.magic}")
                                 # append to original init file in startupColleciton
-                                initFile.children.append(copy.deepcopy(fileRecordEntry))
+                                initFile.children.append(fileRecordEntry)
 
                                 # Prepare child for recursive search
                                 if fileRecordPath not in initNodes:
                                     logging.debug(f"Deep Copy {fileRecordPath} into initnodes from found path")
                                     #Copy! Do not pass-by-reference
-                                    initNodes[fileRecordPath] = copy.deepcopy(fileRecordEntry)
+                                    initNodes[fileRecordPath] = fileRecordEntry
 
                                     #elf or script 
                                     # Set processed (as scriptSearch was run on this file)
@@ -374,8 +375,8 @@ class InitAnalysis:
                                         # to the list of files needing to be processed
                                         # Mark myself as the parent
                                         logging.debug(f"DIR {fileRecordPath} FOUND: Adding files to initlist")
-                                        newFiles = self.statDir(fileRecordEntry.path, parent=path)
-                                        initNodes.update(newFiles)
+                                        #newFiles = self.statDir(fileRecordEntry.path, parent=path)
+                                        #initNodes.update(newFiles)
 
                                     #if elf, will print libraries in log
                                     self.parseInitElf(initNodes[fileRecordPath])

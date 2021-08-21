@@ -106,7 +106,7 @@ def genNodeID(fileRecord, parent_path):
     uid = hash(parent_path)
     path = fileRecord.path
     magic = fileRecord.magic
-    if not "script" or "directory" in magic: 
+    if not "script" in magic: 
         return f"{uid}:{path}"
     return path
 
@@ -124,6 +124,7 @@ def buildGraph(G, IA, args):
     for process, fileRecord in IA.systemv.items():
         # Hacky checklist to avoid repeats
         if process in observed: 
+            logging.debug(f"process: {process} already observed")
             continue
         else:
             observed.add(process)
@@ -148,7 +149,8 @@ def buildGraph(G, IA, args):
                 childRecord = fileRecord.children[index]
                 child_order = index
                 child_path  = childRecord.path 
-                observed.add(child_path)
+                if not "script" in childRecord.magic:
+                    observed.add(child_path)
 
                 logging.debug(f" {process_basename} has child process {child_path}")
 
@@ -280,6 +282,10 @@ def printdict(d,tabspace=0):
             print(f"{space}{key}: {value}")
     print(space+'}')
 
+def printRecords(d):
+    for key,value in d.items():
+        print(f"{key}:{value.__dict__}")
+
 def extractPath(s):
     return re.match(r"((?:/[\w-]+)*(?:/[\w-]+))\s", s)
 
@@ -295,13 +301,12 @@ def main(args):
     logging.info("Reading the filesystem...")
     IA = InitAnalysis(args)
 
-    printdict(IA.systemv)
-
     # Processing the collection of init-related files
     logging.info("Processing/Searching for init files...")
     IA.processInitCollection(IA.systemv)
 
     # Build the graph
+    printRecords(IA.systemv)
     logging.info("Building the graph...")
     G = nx.DiGraph(name=args.filesystem.strip("/"))
     buildGraph(G, IA, args)
