@@ -289,10 +289,38 @@ def printRecords(d):
 def extractPath(s):
     return re.match(r"((?:/[\w-]+)*(?:/[\w-]+))\s", s)
 
-def writeReport(G, IA):
-    print(f"Discovered services:")
-    print(f"Childless services:")
+def tierPrint(G, n, tabspace=0):
+    """
+    G: nx Graph
+    n: node id (str)
+    tabspace = how many spaces
+    """
+    nodeDict = G.nodes()[n]
+    print( ' |'*tabspace +" > " + os.path.basename(n) + f": {nodeDict['type']}")
+    for N in G.successors(n):
+        tierPrint(G, N, tabspace+1)
 
+def writeReport(G, IA):
+    print("="*29 + " Init Service Report " + "="*29)
+    initRecord = IA.getFileRecord('/init')
+    if initRecord:
+        print(f"Found init: {initRecord.path}")
+    print(f"Assumed service startup graph:")
+    initNode = G.nodes(initRecord.path)
+    tierPrint(G, initRecord.path)
+    #for n in nx.descendants(G, initRecord.path):
+        #Returns the path (which is the node id) for all successors
+        #print(n)
+        #print(f"{os.path.basename(n)}")
+
+    print(f"Discovered services:")
+    print("="*80)
+
+    print(f"Discovered {nx.number_of_isolates(G)} Orphan services (no parent):")
+    print(f"This is likely because they are indirectly referenced via bash script")
+    print("="*80)
+    for service in nx.isolates(G):
+        print(service)
     
 # Main Function #################################################
 #################################################################
@@ -325,6 +353,7 @@ def main(args):
         #write_file_csv(IA, os.path.join(args.logdir, "filesystem.csv"))
         #write_missingfiles_csv(IA, os.path.join(args.logdir, "missingfiles.csv"))
         print("fileRecords don't support new objects")
+    writeReport(G,IA)
 
 if __name__ == "__main__":
     main(args)
