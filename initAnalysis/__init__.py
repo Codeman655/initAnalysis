@@ -289,6 +289,10 @@ def printRecords(d):
 def extractPath(s):
     return re.match(r"((?:/[\w-]+)*(?:/[\w-]+))\s", s)
 
+def writeReport(G, IA):
+    print(f"Discovered services:")
+    print(f"Childless services:")
+
     
 # Main Function #################################################
 #################################################################

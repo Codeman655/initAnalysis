@@ -442,6 +442,16 @@ class InitAnalysis:
                     # if not, report and move on
                     if not found:
                         logging.info(f"path '{match}' not found in filesystem")
+                        missingFileRecord = FileRecord( {"path":match,
+                                "basename":os.path.basename(match),
+                                "perms":'000',
+                                "processed":True,
+                                "magic":"missing",
+                                "meta":{},
+                                "parent":[],
+                                "children":[]
+                                })
+                        fileRecord.children.append(missingFileRecord)
 
     def processInitCollection(self, d):
         """
