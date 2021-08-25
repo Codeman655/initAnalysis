@@ -367,15 +367,20 @@ class InitAnalysis:
                                     #Copy! Do not pass-by-reference
                                     initNodes[fileRecordPath] = fileRecordEntry
 
-                                    #elf or script 
+                                    # elf or script 
                                     # Set processed (as scriptSearch was run on this file)
                                     # Is it a directory? 
                                     if "directory" in fileRecordEntry.magic:
+                                        # mark the directory as a child of the current script (done)
                                         # stat the new directory and add 
                                         # to the list of files needing to be processed
                                         # Mark myself as the parent
                                         logging.debug(f"DIR {fileRecordPath} FOUND: Adding files to initlist")
-                                        #newFiles = self.statDir(fileRecordEntry.path, parent=path)
+                                        newFiles = self.statDir(fileRecordEntry.path, parent=path)
+                                        logging.debug(f"DIR CHILDREN OF {fileRecordEntry.path}:")
+                                        fileRecordEntry.children.extend(list(newFiles.values()) ) # only the fileRecords
+                                        logging.debug(f"DIR CHILDREN {fileRecordEntry.children}")
+                                        # we may not need to update them if they've already been processed.
                                         #initNodes.update(newFiles)
 
                                     #if elf, will print libraries in log

@@ -106,7 +106,7 @@ def genNodeID(fileRecord, parent_path):
     uid = hash(parent_path)
     path = fileRecord.path
     magic = fileRecord.magic
-    if not "script" in magic: 
+    if not "script" in magic and not "directory" in magic: 
         return f"{uid}:{path}"
     return path
 
@@ -135,10 +135,11 @@ def buildGraph(G, IA, args):
         node_color = genNodeColor(process_magic)
         G.add_node(process, label=node_label, order=init_index, color=node_color, node_path=process, type=magic_shorthand)
         logging.debug(f"process: {process}:")
+
         #Increase index
         init_index +=1 
 
-        #adding children
+        #Adding children
         if not fileRecord.children: 
             logging.debug("no children")
         else:
@@ -149,7 +150,7 @@ def buildGraph(G, IA, args):
                 childRecord = fileRecord.children[index]
                 child_order = index
                 child_path  = childRecord.path 
-                if not "script" in childRecord.magic:
+                if not "script" in childRecord.magic and not "directory" in childRecord.magic:
                     observed.add(child_path)
 
                 logging.debug(f" {process_basename} has child process {child_path}")
@@ -183,6 +184,7 @@ def buildGraph(G, IA, args):
 
             # init is an assumed binary
             G.add_edge(parentRecord.path , fileRecord.path , color=edge_color)
+
     #Trim the tree 
     if args.trim:
         G.remove_nodes_from(list(nx.isolates(G)))
