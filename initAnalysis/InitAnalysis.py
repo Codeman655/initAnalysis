@@ -396,12 +396,13 @@ class InitAnalysis:
         """
         Uses regexes to decorate the init collections
         Args: fileRecord - the systemv record of the file in question
+        Returns: metadata object for fileRecord
         """
+        ret = {}
         if self.args.symbols and "ELF" in fileRecord["magic"]:
             if "dynamically linked" in fileRecord["magic"]:
                 logging.info(f"ELF file found is dynamically linked: {fileRecord['path']}")
-            else:
-                logging.info(f"ELF file found: {fileRecord['path']}")
+            else: logging.info(f"ELF file found: {fileRecord['path']}")
             libs= {}
             symfile = os.path.join(self.args.logdir,fileRecord["basename"] + "_symbols.log")
             try:

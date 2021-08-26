@@ -303,6 +303,8 @@ def tierPrint(G, n, tabspace=0):
         tierPrint(G, N, tabspace+1)
 
 def writeReport(G, IA):
+    pathRegex = re.compile(r"((?:/[\w-]+)*(?:/[\w\.-]+))\s?")
+    print()
     print("="*29 + " Init Service Report " + "="*29)
     initRecord = IA.getFileRecord('/init')
     if initRecord:
@@ -315,14 +317,26 @@ def writeReport(G, IA):
         #print(n)
         #print(f"{os.path.basename(n)}")
 
-    print(f"Discovered services:")
-    print("="*80)
+    #print(f"Discovered services:")
+    #print("="*80)
 
+    print()
     print(f"Discovered {nx.number_of_isolates(G)} Orphan services (no parent):")
     print(f"This is likely because they are indirectly referenced via bash script")
     print("="*80)
     for service in nx.isolates(G):
         print(service)
+
+    print()
+    print(f"Missing Files (referenced but not found in the firmware):")
+    print("="*80)
+    for key,value in IA.missing.items():
+        if pathRegex.match(key):
+            f = value["file"]
+            caller = os.path.basename(value["calledby"])
+            print(f"{caller} ==calls==> {f}")
+    print()
+
     
 # Main Function #################################################
 #################################################################
@@ -340,7 +354,7 @@ def main(args):
     IA.processInitCollection(IA.systemv)
 
     # Build the graph
-    printRecords(IA.systemv)
+    #DEBUG printRecords(IA.systemv)
     logging.info("Building the graph...")
     G = nx.DiGraph(name=args.filesystem.strip("/"))
     buildGraph(G, IA, args)
@@ -351,10 +365,10 @@ def main(args):
     if not args.graphml == "":
         logging.info(f"Writing graphml file {args.graphml}...")
         nx.write_graphml(G, args.graphml)
-    if not args.quiet:
+    #if not args.quiet:
         #write_file_csv(IA, os.path.join(args.logdir, "filesystem.csv"))
         #write_missingfiles_csv(IA, os.path.join(args.logdir, "missingfiles.csv"))
-        print("fileRecords don't support new objects")
+        #print("fileRecords don't support new objects")
     writeReport(G,IA)
 
 if __name__ == "__main__":
