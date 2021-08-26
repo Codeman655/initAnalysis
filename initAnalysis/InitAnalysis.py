@@ -324,7 +324,7 @@ class InitAnalysis:
                             if fileRecordPath not in initNodes:
                                 logging.debug(f"Deep Copy {fileRecordPath} into initnodes")
                                 initNodes[fileRecordPath] = fileRecordEntry #Copy! Do not reference
-                                self.parseInitElf(initNodes[fileRecordPath])
+                                initNodes[fileRecordPath].meta = self.parseInitElf(initNodes[fileRecordPath])
                                 initNodes[fileRecordPath].processed = True
                             else:
                                 logging.debug(f"{fileRecordPath} already in initnodes")
@@ -384,7 +384,7 @@ class InitAnalysis:
                                         #initNodes.update(newFiles)
 
                                     #if elf, will print libraries in log
-                                    self.parseInitElf(initNodes[fileRecordPath])
+                                    initNodes[fileRecordPath].meta = self.parseInitElf(initNodes[fileRecordPath])
                                     #if script, will traverse
                                     self.scriptSearch(initNodes[fileRecordPath], initNodes)
                                     initNodes[fileRecordPath].processed = True
@@ -392,33 +392,39 @@ class InitAnalysis:
         if mountsInFile:
             self.mountpoints[path] = mountsInFile
 
+
     def parseInitElf(self, fileRecord):
         """
         Uses regexes to decorate the init collections
         Args: fileRecord - the systemv record of the file in question
         Returns: metadata object for fileRecord
         """
-        ret = {}
-        if self.args.symbols and "ELF" in fileRecord["magic"]:
-            if "dynamically linked" in fileRecord["magic"]:
-                logging.info(f"ELF file found is dynamically linked: {fileRecord['path']}")
-            else: logging.info(f"ELF file found: {fileRecord['path']}")
+        ret = {"symbols": [], "libraries": []}
+        libraryRegex= re.compile(r"Shared library: \[(.*)\]")
+        if "ELF" in fileRecord.magic:
+            if "dynamically linked" in fileRecord.magic:
+                logging.info(f"ELF file found is dynamically linked: {fileRecord.path}")
+            else: 
+                logging.info(f"ELF file found: {fileRecord.path}")
             libs= {}
-            symfile = os.path.join(self.args.logdir,fileRecord["basename"] + "_symbols.log")
+            symfile = os.path.join(self.args.logdir,fileRecord.basename + "_symbols.log")
             try:
-                with open(symfile, 'w') as symoutfile:
-                    logging.info(f"Writing syminfo to {symfile}")
-                    subprocess.call("readelf -s " + fileRecord["path"],\
-                            shell=True,\
-                            stdout=symoutfile)
-                libfile = os.path.join(self.args.logdir,fileRecord["basename"] + "_libs.log")
-                with open(symfile, 'w') as liboutfile:
-                    logging.info(f"Writing needed libraries to {libfile}")
-                    stdout = subprocess.call("readelf -d " + fileRecord["path"],\
-                            shell=True,\
-                            stdout=liboutfile)
+                # Get Symbol info for ELF
+                p = subprocess.check_output(["readelf","-s", fileRecord.path],\
+                        encoding="utf-8")
+                ret["symbols"] = [line for line in p.splitlines()]
+
+                #libfile = os.path.join(self.args.logdir,fileRecord["basename"] + "_libs.log")
+                #logging.info(f"Writing needed libraries to {libfile}")
+                p = subprocess.check_output(["readelf","-d",  fileRecord.path],\
+                        encoding="utf-8")
+                for line in p.splitlines():
+                    matchObj = libraryRegex.search(line)
+                    if matchObj:
+                        ret["libraries"].append(matchObj[1])
             except IOError:
                 print("I/O error")
+        return ret
 
     def parseInitTab(self, fileRecord):
         """
@@ -483,7 +489,7 @@ class InitAnalysis:
                 self.parseInitTab(fr)
 
             elif "ELF" in fr.magic:
-                self.parseInitElf(fr)
+                fr.meta = self.parseInitElf(fr)
 
             elif "symbolic link" in fr.magic:
                 # Consider replacing or relabeling the symbolic link 

@@ -32,7 +32,7 @@ parser.add_argument("-v", "--verbose", action='store_true', help="display verbos
 #parser.add_argument("-e", "--elfinfo", action='store_true', help="Record symbols/libraries for *all* ELF binaries")
 parser.add_argument(      "--trim", action='store_true', help="remove functions with no edges from the output tree")
 parser.add_argument("-q", "--quiet", action='store_true', help="output nothing other than graphs")
-parser.add_argument("-s", "--symbols", action='store_true', help="dumps ELF dynamic symbol data into the log folder")
+#parser.add_argument("-s", "--symbols", action='store_true', help="dumps ELF dynamic symbol data into the log folder")
 parser.add_argument("-x", "--exclude", default=list(), type=list, nargs='+', help="exclude files when searching for binaries")
 parser.add_argument("-i", "--include", default=list(), type=list, nargs='+', help="whitelist directories when searching for init binaries")
 parser.add_argument("-d", "--dot", default="", help="output dep graph to dot file")
@@ -110,6 +110,12 @@ def genNodeID(fileRecord, parent_path):
         return f"{uid}:{path}"
     return path
 
+def genDeps(fileRecord):
+    ret = ""
+    if "libraries" in fileRecord.meta:
+        ret = ",".join(fileRecord.meta["libraries"])
+    return ret
+
 def buildGraph(G, IA, args):
     """
     G = Networx Graph
@@ -133,7 +139,14 @@ def buildGraph(G, IA, args):
         node_label = genNodeLabel(process_basename, process_magic)
         magic_shorthand = genMagicShorthand(process_magic)
         node_color = genNodeColor(process_magic)
-        G.add_node(process, label=node_label, order=init_index, color=node_color, node_path=process, type=magic_shorthand)
+        deps = genDeps(fileRecord)
+        G.add_node(process,\
+                label=node_label,\
+                order=init_index,\
+                color=node_color,\
+                node_path=process,\
+                deps = deps,\
+                type=magic_shorthand)
         logging.debug(f"process: {process}:")
 
         #Increase index
@@ -163,12 +176,19 @@ def buildGraph(G, IA, args):
                 node_color = genNodeColor(childRecord.magic )
                 node_label = genNodeLabel(child_basename, childRecord.magic )
                 magic_shorthand = genMagicShorthand(childRecord.magic )
+                deps = genDeps(childRecord)
                 edge_label = str(index)
 
                 #Skip IA-referencing 
                 if child_path == process:
                     continue
-                G.add_node(child_id, label=node_label, order=index, color=node_color, node_path=child_path, type=magic_shorthand)
+                G.add_node(child_id,\
+                        label=node_label,\
+                        order=index,\
+                        color=node_color,\
+                        node_path=child_path,\
+                        deps = deps,\
+                        type=magic_shorthand)
                 G.add_edge(process, child_id, color=edge_color, label=edge_label)
 
         if fileRecord.parent:
@@ -354,7 +374,8 @@ def main(args):
     IA.processInitCollection(IA.systemv)
 
     # Build the graph
-    #DEBUG printRecords(IA.systemv)
+    #DEBUG 
+    printRecords(IA.systemv)
     logging.info("Building the graph...")
     G = nx.DiGraph(name=args.filesystem.strip("/"))
     buildGraph(G, IA, args)
