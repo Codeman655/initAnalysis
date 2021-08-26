@@ -103,12 +103,12 @@ def genNodeColor( magic):
         return "black"
 
 def genNodeID(fileRecord, parent_path):
-    uid = hash(parent_path)
-    path = fileRecord.path
-    magic = fileRecord.magic
-    if not "script" in magic and not "directory" in magic: 
-        return f"{uid}:{path}"
-    return path
+    #uid = hash(parent_path)
+    #path = fileRecord.path
+    #magic = fileRecord.magic
+    #if not "script" in magic and not "directory" in magic: 
+        #return f"{uid}:{path}"
+    return fileRecord.path 
 
 def genDeps(fileRecord):
     ret = ""
