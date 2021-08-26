@@ -375,7 +375,7 @@ def main(args):
 
     # Build the graph
     #DEBUG 
-    printRecords(IA.systemv)
+    #printRecords(IA.systemv)
     logging.info("Building the graph...")
     G = nx.DiGraph(name=args.filesystem.strip("/"))
     buildGraph(G, IA, args)
