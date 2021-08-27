@@ -1,7 +1,7 @@
 # InitAnalysis
 
 ```
-usage: __init__.py [-h] [-v] [--trim] [-q] [-x EXCLUDE [EXCLUDE ...]]
+usage: __main__.py [-h] [-v] [--trim] [-q] [-x EXCLUDE [EXCLUDE ...]]
                    [-i INCLUDE [INCLUDE ...]] [-d DOT] [-g GRAPHML]
                    [-l LOGDIR]
                    firmware
@@ -27,26 +27,53 @@ optional arguments:
                         log directory for various output
 ```
 
-The goal is to quickly gather reconnaissasnce information about a given firmware's SystemV 
+The goal is to quickly gather reconnaissance information about a given firmware's SystemV 
 Initialization process. In addition, there may be several libraries and dependencies built into it.
 This project was designed to be included into the [EMBA](https://github.com/e-m-b-a/emba) project.
 
-#### Why not `pstree` after boot?
+# Installation
 
-Because there are firmware we may never run completely. 
+Simply install all dependencies:
 
-## Notes
-* Anything related to multi-arch binaries may not return valid symbol info from read-elf
+`pip install -r requirements.txt`
+
+Then perform a simple install:
+
+`python3 setup.py install`
+
+Then execute the command as a pthon module:
+
+`python3 -m initAnalysis --help`
+
+
+## Why not `pstree` after boot?
+
+Because there are firmware that may never run completely. In many cases, getting the firmware to be completely rehosted is
+extremely difficult. This is a simple measure to identify critical files to the firmware's init process.
 
 # Output 
 
 ## The Report
 
+When the process is finished, you'll get a quick report of the 
+
+```
+============================= Init Service Report =============================
+Found init: ./sbin/init
+Assumed service startup graph:
+ > init: ELF
+ | > inittab: file
+ | | > rc.sysinit: script
+ | | | > mscfg: file
+ | | | > mount: ELF
+ | | | > proc: directory
+ | | | > alignment: missing
+ | | | > echo: symlink
+```
+
 ## The Graph
 
-Simple application that searches a binwalk extracted firmware filesystem and
-makes a graph of the initial processes. It should give us a simple way to visualize
-the boot process. There'd be a better way to get this tied into firmware.
+The embedded NetworkX graph can be exported to `dot` or `graphml` output formats, via the `-d` and `-g` options respectively.
 
 ### Dependencies
 
